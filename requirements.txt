@@ -1,0 +1,24 @@
+# Iterative Reward Refinement for Pong
+# Python 3.9+
+
+# Core RL
+stable-baselines3[extra]>=2.0.0
+gymnasium[atari,accept-rom-license]>=0.29.0
+ale-py>=0.8.1
+
+# Deep learning
+torch>=2.0.0
+
+# Atari ROMs (auto-installed with gymnasium[accept-rom-license])
+# AutoROM
+
+# HTTP client for Ollama
+requests>=2.28.0
+
+# Utilities
+numpy>=1.24.0
+tqdm>=4.65.0
+
+# Optional: for visualization
+# matplotlib>=3.7.0
+# opencv-python>=4.8.0
