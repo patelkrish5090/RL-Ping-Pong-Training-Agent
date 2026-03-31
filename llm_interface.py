@@ -36,7 +36,7 @@ class LLMRewardGenerator:
         }
         
         try:
-            response = requests.post(url, json=payload, timeout=120)
+            response = requests.post(url, json=payload, timeout=500)
             response.raise_for_status()
             result = response.json()
             return result.get("response", "")
@@ -140,7 +140,7 @@ COMMON REWARD SHAPING STRATEGIES:
 - Penalty for unnecessary movement when ball is far
 
 OUTPUT FORMAT:
-First, explain your reasoning in 2-3 sentences.
+First, explain your detailed reasoning. Include: what the agent is doing wrong based on the metrics, why the current reward function fails to address it, what specific change you are making, why you chose these specific magnitudes, and what behavior improvement you expect. Be thorough.
 Then provide the code in a ```python code block.
 
 Example output format:
@@ -168,7 +168,7 @@ def compute_reward(state: dict, features: dict, env_reward: float, done: bool) -
         else:
             # Try to get any text before code block
             pre_code = response.split('```python')[0] if '```python' in response else ""
-            reasoning = pre_code.strip()[-500:] if pre_code else "No reasoning provided"
+            reasoning = pre_code.strip() if pre_code else "No reasoning provided"
         
         # Extract code block
         code_match = re.search(r'```python\s*(.*?)```', response, re.DOTALL)
@@ -217,7 +217,7 @@ REASONING:
 {reasoning}
 
 TRAINING SUMMARY:
-{training_summary[:500]}...
+{training_summary}
 """
 
 '''

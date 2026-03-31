@@ -314,7 +314,7 @@ def train_iterative(
                 # Generate new reward
                 new_code, reasoning = llm.generate_reward(summary, current_code)
                 
-                print(f"LLM Reasoning: {reasoning[:200]}...")
+                print(f"LLM Reasoning: {reasoning}")
                 
                 # Save new reward
                 llm.save_current_reward(new_code)
