@@ -1,112 +1,174 @@
-"""Extract game state from Pong RAM for reward computation"""
+"""
+Wireless State Extraction and Feature Computation
+==================================================
+Replaces the Pong/ALE RAM extractor.
+
+State comes from the WirelessAntiJammingEnv's internal state dict
+(passed via info["state"] and info["features"] on each step).
+This module provides:
+  - extract_wireless_state()  — thin pass-through / validation
+  - compute_wireless_features() — derived features for reward shaping
+  - state_to_string()         — human-readable string for LLM prompts
+"""
+
 import numpy as np
 from typing import Dict, Optional
 
-# RAM addresses for Pong (verified from Atari 2600 documentation)
-PONG_RAM = {
-    "ball_x": 49,
-    "ball_y": 54,
-    "player_paddle_y": 51,
-    "cpu_paddle_y": 50,
-    "player_score": 14,
-    "cpu_score": 13,
-}
 
-def extract_pong_state(ram: np.ndarray) -> Dict:
+def extract_wireless_state(env_state: Dict) -> Dict:
     """
-    Extract game state from 128-byte RAM.
-    
+    Validate and return the wireless environment state dict.
+
+    The env already provides a rich state dict via info["state"].
+    This function acts as a typed pass-through and fills in defaults
+    for any missing keys so downstream code never KeyErrors.
+
     Args:
-        ram: 128-byte numpy array from env.unwrapped.ale.getRAM()
-    
+        env_state: dict from info["state"] in WirelessAntiJammingEnv
+
     Returns:
-        Dictionary with game state
+        Validated state dict with guaranteed keys
     """
+    n = env_state.get("n_channels", 8)
     return {
-        "ball_x": int(ram[PONG_RAM["ball_x"]]),
-        "ball_y": int(ram[PONG_RAM["ball_y"]]),
-        "player_paddle_y": int(ram[PONG_RAM["player_paddle_y"]]),
-        "cpu_paddle_y": int(ram[PONG_RAM["cpu_paddle_y"]]),
-        "player_score": int(ram[PONG_RAM["player_score"]]),
-        "cpu_score": int(ram[PONG_RAM["cpu_score"]]),
+        "channel_snr":           np.asarray(env_state.get("channel_snr", np.zeros(n))),
+        "channel_success_rates": np.asarray(env_state.get("channel_success_rates", np.full(n, 0.5))),
+        "jammed_decay":          np.asarray(env_state.get("jammed_decay", np.zeros(n))),
+        "prev_channel":          int(env_state.get("prev_channel", -1)),
+        "queue_length":          int(env_state.get("queue_length", 0)),
+        "energy_used":           float(env_state.get("energy_used", 0.0)),
+        "jammer_mode":           str(env_state.get("jammer_mode", "unknown")),
+        "step":                  int(env_state.get("step", 0)),
+        "max_steps":             int(env_state.get("max_steps", 500)),
+        "n_channels":            n,
+        "ep_delivered":          int(env_state.get("ep_delivered", 0)),
+        "ep_total_tx":           int(env_state.get("ep_total_tx", 0)),
+        "ep_jammed_tx":          int(env_state.get("ep_jammed_tx", 0)),
+        "ep_switches":           int(env_state.get("ep_switches", 0)),
+        "ep_energy":             float(env_state.get("ep_energy", 0.0)),
     }
 
 
-def compute_derived_features(state: Dict, prev_state: Optional[Dict] = None) -> Dict:
+def compute_wireless_features(state: Dict, prev_state: Optional[Dict] = None) -> Dict:
     """
-    Compute useful features for reward shaping.
-    
+    Compute derived features from current (and optionally previous) state.
+
+    These features are passed to compute_reward() alongside the raw state dict,
+    giving the LLM-generated reward function clean booleans and scalars to work with.
+
     Args:
-        state: Current game state
-        prev_state: Previous game state (optional)
-    
+        state:      Current wireless state dict (from extract_wireless_state)
+        prev_state: Previous step's state dict (optional)
+
     Returns:
-        Dictionary with derived features
+        Dict of derived features
     """
-    features = {}
-    
+    features: Dict = {}
+
     if not state:
         return features
-    
-    ball_y = state.get("ball_y", 100)
-    paddle_y = state.get("player_paddle_y", 100)
-    
-    # Distance between paddle and ball (Y-axis)
-    features["paddle_ball_distance_y"] = abs(ball_y - paddle_y)
-    
-    # Is paddle aligned with ball? (within 10 pixels)
-    features["paddle_aligned"] = features["paddle_ball_distance_y"] < 10
-    
-    # Ball position normalized (0-1)
-    features["ball_x_normalized"] = state.get("ball_x", 80) / 160.0
-    features["ball_y_normalized"] = ball_y / 210.0
-    
-    # Paddle position normalized
-    features["paddle_y_normalized"] = paddle_y / 210.0
-    
-    # Score difference
-    features["score_diff"] = state.get("player_score", 0) - state.get("cpu_score", 0)
-    
-    # Velocity features (if we have previous state)
+
+    n = state.get("n_channels", 8)
+    success_rates = state.get("channel_success_rates", np.full(n, 0.5))
+    jammed_decay  = state.get("jammed_decay", np.zeros(n))
+    snr           = state.get("channel_snr", np.zeros(n))
+    prev_ch       = state.get("prev_channel", -1)
+    queue         = state.get("queue_length", 0)
+    max_steps     = state.get("max_steps", 500)
+    step          = state.get("step", 0)
+
+    # Best channel by rolling success rate
+    best_ch = int(np.argmax(success_rates))
+    features["best_channel"] = best_ch
+    features["best_channel_success_rate"] = float(success_rates[best_ch])
+
+    # Worst (most jammed) channel
+    features["worst_channel"] = int(np.argmax(jammed_decay))
+    features["worst_jammed_decay"] = float(np.max(jammed_decay))
+
+    # Current channel selected (same as prev_ch since step already advanced)
+    features["current_channel"] = prev_ch
+
+    # Did agent switch channel from last step?
     if prev_state is not None:
-        prev_ball_x = prev_state.get("ball_x", state.get("ball_x", 80))
-        prev_ball_y = prev_state.get("ball_y", ball_y)
-        prev_paddle_y = prev_state.get("player_paddle_y", paddle_y)
-        
-        features["ball_velocity_x"] = state.get("ball_x", 80) - prev_ball_x
-        features["ball_velocity_y"] = ball_y - prev_ball_y
-        features["paddle_velocity"] = paddle_y - prev_paddle_y
-        
-        # Is ball coming toward player? (negative x velocity = toward right paddle)
-        features["ball_approaching"] = features["ball_velocity_x"] < 0
-        
-        # Did we get closer to the ball?
-        prev_distance = abs(prev_ball_y - prev_paddle_y)
-        curr_distance = features["paddle_ball_distance_y"]
-        features["moving_toward_ball"] = curr_distance < prev_distance
+        features["switched"] = bool(prev_ch != prev_state.get("prev_channel", -1))
     else:
-        features["ball_velocity_x"] = 0
-        features["ball_velocity_y"] = 0
-        features["paddle_velocity"] = 0
-        features["ball_approaching"] = False
-        features["moving_toward_ball"] = False
-    
+        features["switched"] = False
+
+    # Is the current channel heavily jammed? (decay > 0.5 means recently jammed)
+    if 0 <= prev_ch < n:
+        features["current_ch_jammed"] = bool(jammed_decay[prev_ch] > 0.5)
+        features["current_ch_snr"] = float(snr[prev_ch])
+        features["current_ch_success_rate"] = float(success_rates[prev_ch])
+    else:
+        features["current_ch_jammed"] = False
+        features["current_ch_snr"] = float(np.mean(snr))
+        features["current_ch_success_rate"] = 0.5
+
+    # Queue pressure: how full is the queue?
+    queue_cap = 20
+    features["queue_pressure"] = float(queue / queue_cap)
+    features["queue_critical"] = bool(queue > queue_cap * 0.8)
+
+    # Running delivery ratio
+    ep_tx = max(state.get("ep_total_tx", 0), 1)
+    features["running_pdr"] = float(state.get("ep_delivered", 0) / ep_tx)
+    features["running_jammed_rate"] = float(state.get("ep_jammed_tx", 0) / ep_tx)
+
+    # Adaptation signal: is agent on the best available channel?
+    features["on_best_channel"] = bool(prev_ch == best_ch)
+
+    # Energy budget progress
+    ep_energy = state.get("ep_energy", 0.0)
+    features["energy_budget_used"] = float(
+        ep_energy / max(step * 1.0, 1.0)  # energy per step
+    )
+
+    # Step fraction (how far into the episode)
+    features["step_fraction"] = float(step / max(max_steps, 1))
+
+    # Throughput trend vs previous state
+    if prev_state is not None:
+        prev_pdr_num = prev_state.get("ep_delivered", 0)
+        prev_pdr_den = max(prev_state.get("ep_total_tx", 1), 1)
+        prev_pdr = prev_pdr_num / prev_pdr_den
+        features["pdr_improving"] = bool(features["running_pdr"] > prev_pdr)
+    else:
+        features["pdr_improving"] = False
+
     return features
 
 
 def state_to_string(state: Dict, features: Dict) -> str:
-    """Convert state and features to human-readable string for LLM"""
+    """Convert wireless state and features to human-readable string for LLM."""
     if not state:
         return "No state available"
-    
+
+    n = state.get("n_channels", 8)
+    snr = state.get("channel_snr", np.zeros(n))
+    sr  = state.get("channel_success_rates", np.full(n, 0.5))
+    jd  = state.get("jammed_decay", np.zeros(n))
+
     lines = [
-        f"Ball Position: ({state.get('ball_x', '?')}, {state.get('ball_y', '?')})",
-        f"Player Paddle Y: {state.get('player_paddle_y', '?')}",
-        f"CPU Paddle Y: {state.get('cpu_paddle_y', '?')}",
-        f"Score: Player {state.get('player_score', 0)} - CPU {state.get('cpu_score', 0)}",
-        f"Paddle-Ball Distance: {features.get('paddle_ball_distance_y', '?')} pixels",
-        f"Ball Approaching: {features.get('ball_approaching', '?')}",
-        f"Moving Toward Ball: {features.get('moving_toward_ball', '?')}",
+        f"Step: {state.get('step', 0)} / {state.get('max_steps', 500)}",
+        f"Jammer Mode: {state.get('jammer_mode', 'unknown')}",
+        f"Queue Length: {state.get('queue_length', 0)}",
+        f"Energy Used: {state.get('energy_used', 0.0):.1f}",
+        f"Prev Channel: {state.get('prev_channel', -1)}",
+        "",
+        "Per-channel status (SNR dB | success% | jammed_decay):",
     ]
-    
+    for c in range(n):
+        lines.append(
+            f"  Ch{c}: SNR={snr[c]:.1f} | succ={sr[c]:.2f} | jammed={jd[c]:.2f}"
+        )
+    lines += [
+        "",
+        f"Best Channel: {features.get('best_channel', '?')} "
+        f"(success={features.get('best_channel_success_rate', 0):.2f})",
+        f"Current Channel Jammed: {features.get('current_ch_jammed', '?')}",
+        f"Queue Pressure: {features.get('queue_pressure', 0):.2f}",
+        f"Running PDR: {features.get('running_pdr', 0):.3f}",
+        f"Running Jammed Rate: {features.get('running_jammed_rate', 0):.3f}",
+    ]
     return "\n".join(lines)

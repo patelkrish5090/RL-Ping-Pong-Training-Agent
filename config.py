@@ -1,21 +1,33 @@
-"""Configuration for Pong RL Training with LLM Reward Refinement"""
+"""
+Configuration for LLM-Guided Reward Shaping — Anti-Jamming Channel Selection
+MILCOM Research Prototype
+"""
 from pathlib import Path
 
 # =============================================================================
-# ENVIRONMENT
+# WIRELESS ENVIRONMENT PARAMETERS
 # =============================================================================
-ENV_ID = "PongNoFrameskip-v4"  # Atari Pong
-N_ENVS = 8                      # Parallel environments
-FRAME_STACK = 4                 # Stacked frames for temporal info
+N_CHANNELS = 8                    # Number of available wireless channels
+JAMMER_MODES = ["random", "sweep", "reactive"]
+JAMMER_CHANGE_INTERVAL = 150      # Steps before jammer switches strategy
+MAX_STEPS_PER_EPISODE = 500       # Steps per training episode
+SNR_MEAN = 10.0                   # Mean per-channel SNR (dB)
+SNR_STD = 3.0                     # SNR fluctuation standard deviation (dB)
+SNR_THRESHOLD = 5.0               # Min SNR for successful TX (dB)
+QUEUE_CAPACITY = 20               # Max packet queue depth
+ARRIVAL_RATE = 0.7                # Packet arrival probability per step
+ENERGY_PER_TX = 1.0              # Energy cost per transmission attempt
+SNR_HISTORY_LEN = 10              # Window for rolling success-rate estimates
+N_ENVS = 4                        # Parallel environments (MLP is fast)
 
 # =============================================================================
-# PPO HYPERPARAMETERS (Tuned for Atari)
+# PPO HYPERPARAMETERS (Tuned for MLP / tabular-ish env)
 # =============================================================================
 PPO_CONFIG = {
-    "learning_rate": 2.5e-4,
-    "n_steps": 128,
-    "batch_size": 256,
-    "n_epochs": 4,
+    "learning_rate": 3e-4,
+    "n_steps": 512,
+    "batch_size": 64,
+    "n_epochs": 10,
     "gamma": 0.99,
     "gae_lambda": 0.95,
     "ent_coef": 0.01,
@@ -27,10 +39,10 @@ PPO_CONFIG = {
 # =============================================================================
 # ITERATIVE REFINEMENT
 # =============================================================================
-EPISODES_PER_UPDATE = 10        # Train N episodes, then ask LLM
-MAX_ITERATIONS = 50             # Maximum LLM updates
-TARGET_SCORE = 19.0             # Stop when reached
-TIMESTEPS_PER_ITERATION = 100000 # Timesteps between LLM updates
+EPISODES_PER_UPDATE = 20           # Analyze this many recent episodes for LLM
+MAX_ITERATIONS = 20                # Maximum LLM reward-refinement iterations
+TARGET_PDR = 0.80                  # Stop training when rolling PDR >= this
+TIMESTEPS_PER_ITERATION = 20000   # Training steps between LLM updates
 
 # =============================================================================
 # LLM CONFIGURATION (Ollama)
@@ -38,20 +50,8 @@ TIMESTEPS_PER_ITERATION = 100000 # Timesteps between LLM updates
 LLM_CONFIG = {
     "model": "qwen2.5-coder:7b-instruct",  # Or "deepseek-coder:6.7b"
     "host": "http://localhost:11434",
-    "temperature": 0.8,
+    "temperature": 0.7,
     "num_ctx": 8192,
-}
-
-# =============================================================================
-# PONG RAM ADDRESSES (For state extraction)
-# =============================================================================
-PONG_RAM = {
-    "ball_x": 49,
-    "ball_y": 54,
-    "player_paddle_y": 51,
-    "cpu_paddle_y": 50,
-    "player_score": 14,
-    "cpu_score": 13,
 }
 
 # =============================================================================

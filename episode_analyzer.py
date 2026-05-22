@@ -1,49 +1,69 @@
-"""Analyze episodes and generate feedback for LLM"""
+"""
+Episode Analyzer for Anti-Jamming Channel Selection
+=====================================================
+Replaces the Pong hit/miss/distance analyzer with wireless communication
+metrics relevant to the MILCOM anti-jamming research context.
+
+Tracked metrics per episode:
+  - Packet Delivery Ratio (PDR)
+  - Average throughput (packets/step)
+  - Jammed transmission rate
+  - Average queue length
+  - Channel switching rate (switches/step)
+  - Energy cost
+  - Adaptation behavior under jammer changes
+"""
+
 import numpy as np
 from typing import List, Dict, Optional
-from collections import defaultdict
 
 
 class EpisodeAnalyzer:
     """
-    Analyzes training episodes to generate meaningful feedback for LLM.
-    Tracks statistics across episodes and generates behavior descriptions.
+    Analyzes training episodes to generate meaningful feedback for the LLM.
+    Tracks statistics across episodes and generates behavior descriptions
+    in the wireless anti-jamming domain.
     """
-    
+
     def __init__(self):
         self.episodes: List[Dict] = []
-        self.step_data: List[Dict] = []  # Detailed step-by-step data
-    
+        self.step_data: List[Dict] = []  # Detailed step-by-step data (optional)
+
     def add_episode(self, stats: Dict):
         """
         Add episode statistics.
-        
+
         Args:
-            stats: Dictionary containing episode data like:
-                - total_reward: Episode reward
-                - length: Episode length
-                - hits: Number of successful ball returns
-                - misses: Number of missed balls
-                - paddle_distances: List of paddle-ball distances
+            stats: Dictionary containing episode metrics, expected keys:
+                - pdr:         Packet Delivery Ratio (0–1)
+                - throughput:  Packets delivered per step
+                - jammed_rate: Fraction of TX attempts that were jammed
+                - avg_queue:   Average queue length during episode
+                - switches:    Total channel switches
+                - switch_rate: Switches per step
+                - energy:      Total energy consumed
+                - total_steps: Episode length
+                - total_delivered: Total packets delivered
+                - total_tx:    Total transmission attempts
         """
         self.episodes.append(stats)
-    
+
     def add_step(self, step_info: Dict):
-        """Add step-level data for detailed analysis"""
+        """Add step-level data for detailed analysis (optional)."""
         self.step_data.append(step_info)
-    
+
     def clear(self):
-        """Clear stored episodes and step data"""
+        """Clear stored episodes and step data."""
         self.episodes = []
         self.step_data = []
-    
+
     def analyze(self, n_episodes: Optional[int] = None) -> Dict:
         """
-        Analyze last N episodes and generate LLM feedback.
-        
+        Analyze last N episodes and compute aggregate wireless metrics.
+
         Args:
-            n_episodes: Number of episodes to analyze (None = all)
-        
+            n_episodes: Number of recent episodes to analyze (None = all)
+
         Returns:
             Dictionary with statistics and behavior analysis
         """
@@ -51,139 +71,165 @@ class EpisodeAnalyzer:
             recent = self.episodes[-n_episodes:]
         else:
             recent = self.episodes
-        
+
         if not recent:
             return {
                 "error": "No episodes to analyze",
                 "n_episodes": 0,
-                "avg_score": -21,
-                "behaviors": "No data available - agent hasn't played any episodes yet.",
+                "avg_pdr": 0.0,
+                "avg_score": 0.0,  # Alias for train_iterative compatibility
+                "behaviors": "No data available — agent has not completed any episodes yet.",
             }
-        
-        # Basic statistics
-        scores = [ep.get("total_reward", ep.get("reward", 0)) for ep in recent]
-        lengths = [ep.get("length", ep.get("l", 0)) for ep in recent]
-        
+
+        n = len(recent)
+
+        # ---- Core wireless metrics ----------------------------------------
+        pdrs         = [ep.get("pdr", 0.0)         for ep in recent]
+        throughputs  = [ep.get("throughput", 0.0)   for ep in recent]
+        jammed_rates = [ep.get("jammed_rate", 0.0)  for ep in recent]
+        avg_queues   = [ep.get("avg_queue", 0.0)    for ep in recent]
+        switch_rates = [ep.get("switch_rate", 0.0)  for ep in recent]
+        energies     = [ep.get("energy", 0.0)       for ep in recent]
+        lengths      = [ep.get("total_steps", ep.get("length", 0)) for ep in recent]
+
         analysis = {
-            "n_episodes": len(recent),
-            "avg_score": float(np.mean(scores)),
-            "best_score": float(max(scores)),
-            "worst_score": float(min(scores)),
-            "score_std": float(np.std(scores)),
-            "avg_length": float(np.mean(lengths)) if lengths else 0,
+            "n_episodes":       n,
+            "avg_pdr":          float(np.mean(pdrs)),
+            "best_pdr":         float(np.max(pdrs)),
+            "worst_pdr":        float(np.min(pdrs)),
+            "pdr_std":          float(np.std(pdrs)),
+            "avg_throughput":   float(np.mean(throughputs)),
+            "avg_jammed_rate":  float(np.mean(jammed_rates)),
+            "avg_queue":        float(np.mean(avg_queues)),
+            "avg_switch_rate":  float(np.mean(switch_rates)),
+            "avg_energy":       float(np.mean(energies)),
+            "avg_length":       float(np.mean(lengths)) if lengths else 0.0,
+            # Alias used by train_iterative.py for convergence check
+            "avg_score":        float(np.mean(pdrs)),
+            "best_score":       float(np.max(pdrs)),
+            "worst_score":      float(np.min(pdrs)),
         }
-        
-        # Win rate (positive score = winning)
-        wins = sum(1 for s in scores if s > 0)
-        analysis["win_rate"] = (wins / len(scores)) * 100 if scores else 0
-        
-        # Paddle-ball distance analysis
-        all_distances = []
-        for ep in recent:
-            distances = ep.get("paddle_distances", ep.get("paddle_ball_distances", []))
-            if distances:
-                all_distances.extend(distances)
-        
-        if all_distances:
-            analysis["avg_paddle_distance"] = float(np.mean(all_distances))
-            analysis["min_paddle_distance"] = float(np.min(all_distances))
-            analysis["max_paddle_distance"] = float(np.max(all_distances))
-        else:
-            analysis["avg_paddle_distance"] = 50.0  # Default estimate
-        
-        # Hit/miss analysis
-        total_hits = sum(ep.get("hits", 0) for ep in recent)
-        total_misses = sum(ep.get("misses", 0) for ep in recent)
-        analysis["total_hits"] = total_hits
-        analysis["total_misses"] = total_misses
-        
-        if total_hits + total_misses > 0:
-            analysis["hit_rate"] = (total_hits / (total_hits + total_misses)) * 100
-        else:
-            analysis["hit_rate"] = 0.0
-        
+
+        # High-PDR episodes (PDR >= 0.75 = "good performance")
+        good_eps = sum(1 for p in pdrs if p >= 0.75)
+        analysis["good_episode_rate"] = (good_eps / n) * 100
+
         # Generate behavior description
         analysis["behaviors"] = self._describe_behaviors(analysis)
-        
+
         return analysis
-    
+
     def _describe_behaviors(self, stats: Dict) -> str:
-        """Generate natural language description of agent behavior for LLM"""
+        """Generate natural language description of agent behavior for LLM."""
         behaviors = []
-        
-        avg_score = stats.get("avg_score", -21)
-        avg_distance = stats.get("avg_paddle_distance", 100)
-        hit_rate = stats.get("hit_rate", 0)
-        win_rate = stats.get("win_rate", 0)
-        
-        # Score-based observations
-        if avg_score < -15:
-            behaviors.append("❌ Agent is losing badly (score < -15) - not tracking ball effectively")
-        elif avg_score < -5:
-            behaviors.append("⚠️ Agent loses more than wins - tracking is inconsistent")
-        elif avg_score < 5:
-            behaviors.append("➡️ Agent is competitive - basic tracking works but needs improvement")
-        elif avg_score < 15:
-            behaviors.append("✓ Agent is winning - good ball tracking established")
+
+        avg_pdr        = stats.get("avg_pdr", 0.0)
+        avg_jammed     = stats.get("avg_jammed_rate", 0.0)
+        avg_queue      = stats.get("avg_queue", 0.0)
+        avg_switch     = stats.get("avg_switch_rate", 0.0)
+        good_rate      = stats.get("good_episode_rate", 0.0)
+        avg_throughput = stats.get("avg_throughput", 0.0)
+
+        # ---- PDR assessment -----------------------------------------------
+        if avg_pdr < 0.30:
+            behaviors.append("[FAIL] Very low PDR (<30%) -- agent is selecting jammed channels frequently")
+        elif avg_pdr < 0.50:
+            behaviors.append("[WARN] Low PDR (30-50%) -- agent is partially avoiding jammer but inconsistently")
+        elif avg_pdr < 0.70:
+            behaviors.append("[OK]   Moderate PDR (50-70%) -- agent avoids jamming in most episodes")
+        elif avg_pdr < 0.85:
+            behaviors.append("[GOOD] Good PDR (70-85%) -- effective channel selection with room to improve")
         else:
-            behaviors.append("✅ Agent is dominating - excellent performance")
-        
-        # Distance-based observations
-        if avg_distance > 60:
-            behaviors.append("🔴 Paddle very far from ball (>60px) - needs fundamental tracking improvement")
-        elif avg_distance > 40:
-            behaviors.append("🟠 Paddle often far from ball (40-60px) - tracking too slow")
-        elif avg_distance > 20:
-            behaviors.append("🟡 Paddle moderately close (20-40px) - can improve anticipation")
+            behaviors.append("[BEST] Excellent PDR (>85%) -- agent reliably avoids jamming and delivers packets")
+
+        # ---- Jammed TX rate -----------------------------------------------
+        if avg_jammed > 0.50:
+            behaviors.append("[HIGH]  High jammed TX rate (>50%) -- agent is not avoiding jammer effectively")
+        elif avg_jammed > 0.30:
+            behaviors.append("[MED]   Moderate jammed TX rate (30-50%) -- still transmitting on jammed channels")
+        elif avg_jammed > 0.10:
+            behaviors.append("[LOW]   Low jammed TX rate (10-30%) -- occasional jamming collisions")
         else:
-            behaviors.append("🟢 Paddle stays close to ball (<20px) - good alignment")
-        
-        # Hit rate observations
-        if hit_rate < 20:
-            behaviors.append("Miss Rate: Very high (>80%) - agent misses most incoming balls")
-        elif hit_rate < 40:
-            behaviors.append("Miss Rate: High (60-80%) - agent misses many balls")
-        elif hit_rate < 60:
-            behaviors.append("Miss Rate: Moderate (40-60%) - room for improvement")
+            behaviors.append("[CLEAR] Minimal jammed TX rate (<10%) -- excellent jammer avoidance")
+
+        # ---- Queue buildup ------------------------------------------------
+        if avg_queue > 15:
+            behaviors.append("[QUEUE-HIGH] Severe queue buildup (>15 pkts) -- throughput is far below arrival rate")
+        elif avg_queue > 10:
+            behaviors.append("[QUEUE-MED]  Moderate queue buildup (10-15 pkts) -- delivery not keeping up with arrivals")
+        elif avg_queue > 5:
+            behaviors.append("[QUEUE-LOW]  Mild queue pressure (5-10 pkts) -- manageable but worth reducing")
         else:
-            behaviors.append("Hit Rate: Good (>60%) - successfully returns most balls")
-        
-        # Specific recommendations based on patterns
-        if avg_score < -10 and avg_distance > 40:
-            behaviors.append("\n📋 RECOMMENDATION: Focus reward on paddle-ball Y alignment")
-        elif avg_score < 0 and avg_distance < 30:
-            behaviors.append("\n📋 RECOMMENDATION: Agent tracks but reacts too slowly - reward quick movements")
-        elif avg_score > 0 and win_rate < 70:
-            behaviors.append("\n📋 RECOMMENDATION: Add strategic positioning reward for offensive play")
-        
+            behaviors.append("[QUEUE-OK]   Low queue depth (<5 pkts) -- agent is clearing the queue effectively")
+
+        # ---- Channel switching behavior -----------------------------------
+        if avg_switch > 0.50:
+            behaviors.append("[SWITCH-HIGH] Very high switching rate (>50%/step) -- excessive channel hopping, "
+                             "wasting energy and causing instability")
+        elif avg_switch > 0.25:
+            behaviors.append("[SWITCH-MED]  High switching rate (25-50%/step) -- more switches than necessary")
+        elif avg_switch > 0.10:
+            behaviors.append("[SWITCH-OK]   Moderate switching rate (10-25%/step) -- reasonable adaptation behavior")
+        else:
+            behaviors.append("[SWITCH-LOW]  Low switching rate (<10%/step) -- agent tends to stay on one channel; "
+                             "may be too slow to adapt to jammer changes")
+
+        # ---- Throughput ---------------------------------------------------
+        if avg_throughput < 0.10:
+            behaviors.append("[THRU-CRIT] Very low throughput (<0.10 pkts/step) -- nearly no packets getting through")
+        elif avg_throughput < 0.30:
+            behaviors.append("[THRU-LOW]  Low throughput (0.10-0.30 pkts/step)")
+        elif avg_throughput < 0.50:
+            behaviors.append("[THRU-MED]  Moderate throughput (0.30-0.50 pkts/step)")
+        else:
+            behaviors.append("[THRU-HIGH] High throughput (>0.50 pkts/step) -- strong channel utilization")
+
+        # ---- Actionable recommendations -----------------------------------
+        if avg_pdr < 0.40 and avg_jammed > 0.40:
+            behaviors.append("\nRECOMMENDATION: Agent needs stronger incentive to avoid jammed channels. "
+                             "Add penalty for selecting recently-jammed channels.")
+        elif avg_queue > 12 and avg_switch < 0.15:
+            behaviors.append("\nRECOMMENDATION: Queue is growing -- agent may be stuck on a low-quality "
+                             "channel. Reward switching when queue pressure is high.")
+        elif avg_switch > 0.40 and avg_pdr > 0.60:
+            behaviors.append("\nRECOMMENDATION: Excessive switching despite decent PDR. "
+                             "Add a switching penalty to reduce unnecessary hopping.")
+        elif avg_pdr > 0.70 and avg_jammed < 0.15:
+            behaviors.append("\nRECOMMENDATION: Good avoidance behavior. Fine-tune reward "
+                             "to optimize energy efficiency and throughput consistency.")
+
         return "\n".join(f"- {b}" if not b.startswith("\n") else b for b in behaviors)
-    
-    def get_summary_for_llm(self, n_episodes: int = 10) -> str:
+
+    def get_summary_for_llm(self, n_episodes: int = 20) -> str:
         """
-        Get a formatted summary string suitable for LLM prompt.
-        
+        Get a formatted summary string suitable for the LLM prompt.
+
         Args:
             n_episodes: Number of recent episodes to summarize
-        
+
         Returns:
             Formatted string for LLM
         """
         stats = self.analyze(n_episodes)
-        
-        summary = f"""## Training Results (Last {stats['n_episodes']} Episodes)
 
-### Performance Metrics
-- Average Score: {stats['avg_score']:.2f}
-- Best Score: {stats['best_score']:.0f}
-- Worst Score: {stats['worst_score']:.0f}
-- Win Rate: {stats['win_rate']:.1f}%
+        summary = f"""## Training Results — Anti-Jamming Channel Selection (Last {stats['n_episodes']} Episodes)
+
+### Packet Delivery & Throughput
+- Average PDR (Packet Delivery Ratio): {stats['avg_pdr']:.3f}
+- Best Episode PDR: {stats['best_pdr']:.3f}
+- Worst Episode PDR: {stats['worst_pdr']:.3f}
+- PDR Std Dev: {stats['pdr_std']:.3f}
+- Average Throughput: {stats['avg_throughput']:.3f} pkts/step
+- Good Episode Rate (PDR >= 0.75): {stats['good_episode_rate']:.1f}%
+
+### Anti-Jamming Behavior
+- Average Jammed TX Rate: {stats['avg_jammed_rate']:.3f}
+- Average Queue Length: {stats['avg_queue']:.2f} packets
+
+### Channel Management
+- Average Switching Rate: {stats['avg_switch_rate']:.3f} switches/step
+- Average Energy per Episode: {stats['avg_energy']:.1f} units
 - Average Episode Length: {stats['avg_length']:.0f} steps
-
-### Ball Tracking
-- Average Paddle-Ball Distance: {stats.get('avg_paddle_distance', 'N/A'):.1f} pixels
-- Hit Rate: {stats.get('hit_rate', 0):.1f}%
-- Total Hits: {stats['total_hits']}
-- Total Misses: {stats['total_misses']}
 
 ### Observed Behaviors
 {stats['behaviors']}
