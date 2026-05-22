@@ -9,14 +9,22 @@ from pathlib import Path
 # =============================================================================
 N_CHANNELS = 8                    # Number of available wireless channels
 JAMMER_MODES = ["random", "sweep", "reactive"]
-JAMMER_CHANGE_INTERVAL = 150      # Steps before jammer switches strategy
+N_JAMMED_CHANNELS = 2             # Number of channels jammed in random/sweep modes
+SWEEP_WIDTH = 2                   # Number of adjacent channels hit by sweep jammer
+REACTIVE_JAM_PROB = 0.95          # Probability reactive jammer attacks last-used channel
+REACTIVE_EXTRA_RANDOM = 1         # Extra random channels jammed by reactive jammer
+JAMMER_CHANGE_INTERVAL = 100      # Steps before jammer switches strategy
 MAX_STEPS_PER_EPISODE = 500       # Steps per training episode
-SNR_MEAN = 10.0                   # Mean per-channel SNR (dB)
-SNR_STD = 3.0                     # SNR fluctuation standard deviation (dB)
-SNR_THRESHOLD = 5.0               # Min SNR for successful TX (dB)
+SNR_MEAN = 8.0                    # Mean per-channel SNR (dB)
+SNR_STD = 4.0                     # SNR fluctuation standard deviation (dB)
+SNR_THRESHOLD = 7.0               # Min SNR for successful TX (dB)
 QUEUE_CAPACITY = 20               # Max packet queue depth
-ARRIVAL_RATE = 0.7                # Packet arrival probability per step
+ARRIVAL_RATE = 0.35               # Packet arrival probability per arrival slot
+MAX_PACKET_ARRIVALS = 2           # Packet arrival slots per step
 ENERGY_PER_TX = 1.0              # Energy cost per transmission attempt
+SWITCH_DISRUPTION_PROB = 0.15     # Probability a channel switch disrupts the packet
+SWITCH_ENERGY_COST = 0.25         # Extra energy cost paid when changing channels
+SWITCH_REWARD_PENALTY = 0.05      # Base penalty for switching overhead
 SNR_HISTORY_LEN = 10              # Window for rolling success-rate estimates
 N_ENVS = 4                        # Parallel environments (MLP is fast)
 

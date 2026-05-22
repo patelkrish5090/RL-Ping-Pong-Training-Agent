@@ -27,7 +27,10 @@ from stable_baselines3.common.monitor import Monitor
 from wireless_env import WirelessAntiJammingEnv
 from config import (
     N_CHANNELS, MAX_STEPS_PER_EPISODE, JAMMER_MODES, JAMMER_CHANGE_INTERVAL,
-    SNR_MEAN, SNR_STD, SNR_THRESHOLD, QUEUE_CAPACITY, ARRIVAL_RATE, ENERGY_PER_TX,
+    N_JAMMED_CHANNELS, SWEEP_WIDTH, REACTIVE_JAM_PROB, REACTIVE_EXTRA_RANDOM,
+    SNR_MEAN, SNR_STD, SNR_THRESHOLD, QUEUE_CAPACITY, ARRIVAL_RATE,
+    MAX_PACKET_ARRIVALS, ENERGY_PER_TX, SWITCH_DISRUPTION_PROB,
+    SWITCH_ENERGY_COST, SWITCH_REWARD_PENALTY,
     PPO_CONFIG, MODEL_DIR, LOG_DIR,
 )
 
@@ -60,7 +63,7 @@ def _manual_shaped_reward(state: dict, features: dict, env_reward: float, done: 
         reward -= 0.02
 
     # Queue buildup penalty
-    queue_pressure = state.get("queue_length", 0) / max(state.get("n_channels", 20), 1)
+    queue_pressure = state.get("queue_length", 0) / max(QUEUE_CAPACITY, 1)
     if queue_pressure > 0.75:
         reward -= 0.05
     elif queue_pressure > 0.5:
@@ -79,9 +82,17 @@ def make_eval_env(seed: int = 0):
         max_steps=MAX_STEPS_PER_EPISODE,
         jammer_modes=JAMMER_MODES,
         jammer_change_interval=JAMMER_CHANGE_INTERVAL,
+        n_jammed_channels=N_JAMMED_CHANNELS,
+        sweep_width=SWEEP_WIDTH,
+        reactive_jam_prob=REACTIVE_JAM_PROB,
+        reactive_extra_random=REACTIVE_EXTRA_RANDOM,
         snr_mean=SNR_MEAN, snr_std=SNR_STD, snr_threshold=SNR_THRESHOLD,
         queue_capacity=QUEUE_CAPACITY,
-        arrival_rate=ARRIVAL_RATE, energy_per_tx=ENERGY_PER_TX,
+        arrival_rate=ARRIVAL_RATE, max_packet_arrivals=MAX_PACKET_ARRIVALS,
+        energy_per_tx=ENERGY_PER_TX,
+        switch_disruption_prob=SWITCH_DISRUPTION_PROB,
+        switch_energy_cost=SWITCH_ENERGY_COST,
+        switch_reward_penalty=SWITCH_REWARD_PENALTY,
         seed=seed,
     )
 

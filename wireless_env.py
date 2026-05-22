@@ -37,17 +37,24 @@ class RandomJammer:
 
 
 class SweepJammer:
-    """Sweeps through channels sequentially, jamming one at a time."""
+    """Sweeps through channels sequentially, jamming a contiguous band."""
     name = "sweep"
 
-    def __init__(self, n_channels: int, sweep_speed: int = 1, rng: np.random.Generator = None):
+    def __init__(
+        self,
+        n_channels: int,
+        sweep_speed: int = 1,
+        sweep_width: int = 1,
+        rng: np.random.Generator = None,
+    ):
         self.n_channels = n_channels
         self.sweep_speed = sweep_speed
+        self.sweep_width = sweep_width
         self.rng = rng or np.random.default_rng()
 
     def get_jammed_channels(self, step: int, last_agent_channel: int) -> List[int]:
         pos = (step // max(1, self.sweep_speed)) % self.n_channels
-        return [pos]
+        return [(pos + offset) % self.n_channels for offset in range(self.sweep_width)]
 
 
 class ReactiveJammer:
@@ -62,13 +69,18 @@ class ReactiveJammer:
         self.rng = rng or np.random.default_rng()
 
     def get_jammed_channels(self, step: int, last_agent_channel: int) -> List[int]:
+        jammed = []
         if last_agent_channel >= 0 and self.rng.random() < self.reaction_prob:
-            # React to the agent's last channel
-            jammed = [last_agent_channel]
-        else:
-            # Fallback: jam a random channel
-            jammed = list(self.rng.choice(self.n_channels, size=self.n_random, replace=False))
-        return jammed
+            jammed.append(last_agent_channel)
+
+        remaining = [c for c in range(self.n_channels) if c not in jammed]
+        if remaining and self.n_random > 0:
+            sample_size = min(self.n_random, len(remaining))
+            jammed.extend(list(self.rng.choice(remaining, size=sample_size, replace=False)))
+
+        if not jammed:
+            jammed = list(self.rng.choice(self.n_channels, size=1, replace=False))
+        return sorted(set(int(c) for c in jammed))
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +91,7 @@ class WirelessAntiJammingEnv(gym.Env):
     """
     Tactical wireless anti-jamming channel selection environment.
 
-    Observation space (flat Box, ~35 floats):
+    Observation space (flat Box, 3N + 5 floats):
         [0  : N]      channel_success_rate[N]  — rolling packet success rate per channel
         [N  : 2N]     channel_snr[N]           — estimated SNR per channel (normalized 0-1)
         [2N : 3N]     jammed_indicator[N]      — recent jamming detection (exponential decay)
@@ -105,13 +117,21 @@ class WirelessAntiJammingEnv(gym.Env):
         n_channels: int = 8,
         max_steps: int = 500,
         jammer_modes: Optional[List[str]] = None,
-        jammer_change_interval: int = 150,
-        snr_mean: float = 10.0,        # dB mean SNR
-        snr_std: float = 3.0,          # SNR fluctuation std dev
-        snr_threshold: float = 5.0,    # Min SNR for successful TX (dB)
+        jammer_change_interval: int = 100,
+        n_jammed_channels: int = 2,
+        sweep_width: int = 2,
+        reactive_jam_prob: float = 0.95,
+        reactive_extra_random: int = 1,
+        snr_mean: float = 8.0,         # dB mean SNR
+        snr_std: float = 4.0,          # SNR fluctuation std dev
+        snr_threshold: float = 7.0,    # Min SNR for successful TX (dB)
         queue_capacity: int = 20,       # Max queue length
-        arrival_rate: float = 0.7,      # Packet arrival probability per step
+        arrival_rate: float = 0.35,     # Packet arrival probability per slot
+        max_packet_arrivals: int = 2,   # Arrival slots per step
         energy_per_tx: float = 1.0,     # Energy cost per transmission attempt
+        switch_disruption_prob: float = 0.15,
+        switch_energy_cost: float = 0.25,
+        switch_reward_penalty: float = 0.05,
         snr_history_len: int = 10,      # Steps for rolling SNR/success window
         seed: Optional[int] = None,
     ):
@@ -120,12 +140,20 @@ class WirelessAntiJammingEnv(gym.Env):
         self.n_channels = n_channels
         self.max_steps = max_steps
         self.jammer_change_interval = jammer_change_interval
+        self.n_jammed_channels = n_jammed_channels
+        self.sweep_width = sweep_width
+        self.reactive_jam_prob = reactive_jam_prob
+        self.reactive_extra_random = reactive_extra_random
         self.snr_mean = snr_mean
         self.snr_std = snr_std
         self.snr_threshold = snr_threshold
         self.queue_capacity = queue_capacity
         self.arrival_rate = arrival_rate
+        self.max_packet_arrivals = max_packet_arrivals
         self.energy_per_tx = energy_per_tx
+        self.switch_disruption_prob = switch_disruption_prob
+        self.switch_energy_cost = switch_energy_cost
+        self.switch_reward_penalty = switch_reward_penalty
         self.snr_history_len = snr_history_len
 
         self.jammer_modes = jammer_modes or ["random", "sweep", "reactive"]
@@ -168,11 +196,21 @@ class WirelessAntiJammingEnv(gym.Env):
 
     def _make_jammer(self, mode_name: str):
         if mode_name == "random":
-            return RandomJammer(self.n_channels, n_jammed=1, rng=self._np_rng)
+            return RandomJammer(self.n_channels, n_jammed=self.n_jammed_channels, rng=self._np_rng)
         elif mode_name == "sweep":
-            return SweepJammer(self.n_channels, sweep_speed=5, rng=self._np_rng)
+            return SweepJammer(
+                self.n_channels,
+                sweep_speed=5,
+                sweep_width=self.sweep_width,
+                rng=self._np_rng,
+            )
         elif mode_name == "reactive":
-            return ReactiveJammer(self.n_channels, reaction_prob=0.85, rng=self._np_rng)
+            return ReactiveJammer(
+                self.n_channels,
+                reaction_prob=self.reactive_jam_prob,
+                n_random=self.reactive_extra_random,
+                rng=self._np_rng,
+            )
         else:
             return RandomJammer(self.n_channels, rng=self._np_rng)
 
@@ -351,7 +389,7 @@ class WirelessAntiJammingEnv(gym.Env):
         channel = int(action)
 
         # 1. Packet arrivals this step
-        n_arrivals = int(self._np_rng.binomial(3, self.arrival_rate))  # Up to 3 packets/step
+        n_arrivals = int(self._np_rng.binomial(self.max_packet_arrivals, self.arrival_rate))
         self._queue_len = min(self._queue_len + n_arrivals, self.queue_capacity)
         self._ep_arrivals += n_arrivals
 
@@ -383,8 +421,9 @@ class WirelessAntiJammingEnv(gym.Env):
         # 7. Attempt packet transmission
         is_jammed = channel in jammed_channels
         snr_ok = self._np_rng.random() < self._channel_success_prob(channel)
+        switch_disrupted = switched and (self._np_rng.random() < self.switch_disruption_prob)
 
-        tx_success = (not is_jammed) and snr_ok and (self._queue_len > 0)
+        tx_success = (not is_jammed) and snr_ok and (not switch_disrupted) and (self._queue_len > 0)
 
         # Update success history for selected channel
         self._success_history[channel].append(1.0 if tx_success else 0.0)
@@ -398,7 +437,7 @@ class WirelessAntiJammingEnv(gym.Env):
             packets_sent = 0
 
         # 9. Energy cost (transmit attempt always costs energy)
-        energy_cost = self.energy_per_tx
+        energy_cost = self.energy_per_tx + (self.switch_energy_cost if switched else 0.0)
         self._energy_used += energy_cost
         self._ep_energy += energy_cost
 
@@ -416,9 +455,14 @@ class WirelessAntiJammingEnv(gym.Env):
             env_reward = 1.0
         elif is_jammed:
             env_reward = -1.0
+        elif switch_disrupted:
+            env_reward = -0.75
         else:
             # Failed due to SNR — softer penalty
             env_reward = -0.5
+
+        if switched:
+            env_reward -= self.switch_reward_penalty
 
         # Update prev channel
         self._prev_channel = channel
@@ -430,6 +474,7 @@ class WirelessAntiJammingEnv(gym.Env):
             "switched": switched,
             "is_jammed": is_jammed,
             "snr_ok": snr_ok,
+            "switch_disrupted": switch_disrupted,
             "tx_success": tx_success,
             "jammed_channels": jammed_channels,
             "channel_snr": float(self._channel_snr[channel]),
@@ -450,6 +495,7 @@ class WirelessAntiJammingEnv(gym.Env):
             "jammed_channels": jammed_channels,
             "jammer_mode": getattr(self._jammer, "name", "unknown"),
             "is_jammed": is_jammed,
+            "switch_disrupted": switch_disrupted,
             "tx_success": tx_success,
         }
         if truncated:

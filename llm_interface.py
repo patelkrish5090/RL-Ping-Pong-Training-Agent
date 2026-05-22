@@ -1,5 +1,5 @@
-"""
-LLM Interface for Reward Function Generation — Anti-Jamming Channel Selection
+﻿"""
+LLM Interface for Reward Function Generation â€” Anti-Jamming Channel Selection
 =============================================================================
 Interfaces with a local LLM (Ollama) to iteratively generate and refine
 reward functions for tactical wireless anti-jamming channel selection.
@@ -83,7 +83,7 @@ class LLMRewardGenerator:
         return code, reasoning
 
     def _build_prompt(self, training_summary: str, current_code: str = None) -> str:
-        """Build the prompt for reward generation — wireless domain."""
+        """Build the prompt for reward generation â€” wireless domain."""
 
         base_context = """You are an expert reinforcement learning engineer designing reward functions
 for a tactical wireless anti-jamming channel selection agent in a military communications scenario.
@@ -91,51 +91,55 @@ for a tactical wireless anti-jamming channel selection agent in a military commu
 ## Task Context
 A cognitive radio agent must select one of N wireless channels at each timestep to transmit packets.
 A jammer attacks channels using one of three strategies that can change during an episode:
-  - Random Jammer: jams a random channel each step
-  - Sweep Jammer: sweeps through channels sequentially
-  - Reactive Jammer: jams whichever channel the agent used last
+  - Random Jammer: jams multiple random channels each step
+  - Sweep Jammer: sweeps a multi-channel interference band
+  - Reactive Jammer: jams the agent's last-used channel plus random pressure
 
 The agent succeeds when it delivers packets by selecting unjammed channels with sufficient SNR.
+Changing channels has real overhead: a switch can disrupt the current packet and adds extra energy cost.
 
 ## Available State Variables (in `state` dict passed to compute_reward)
-- state["channel_snr"]           : numpy array[N] — per-channel SNR in dB (raw values ~0-25)
-- state["channel_success_rates"] : numpy array[N] — rolling success rate per channel (0.0–1.0)
-- state["jammed_decay"]          : numpy array[N] — decaying jammer indicator per channel (0=clear, 1=recently jammed)
-- state["prev_channel"]          : int            — channel selected in previous step (-1 if start)
-- state["queue_length"]          : int            — current packet queue depth (0–20)
-- state["energy_used"]           : float          — cumulative energy used this episode
-- state["jammer_mode"]           : str            — current jammer mode: "random", "sweep", or "reactive"
-- state["step"]                  : int            — current step number
-- state["max_steps"]             : int            — episode length (500)
-- state["n_channels"]            : int            — number of channels (8)
-- state["ep_delivered"]          : int            — packets delivered so far this episode
-- state["ep_total_tx"]           : int            — total transmission attempts so far
-- state["ep_jammed_tx"]          : int            — total jammed transmissions so far
+- state["channel_snr"]           : numpy array[N] â€” per-channel SNR in dB (raw values ~0-25)
+- state["channel_success_rates"] : numpy array[N] â€” rolling success rate per channel (0.0â€“1.0)
+- state["jammed_decay"]          : numpy array[N] â€” decaying jammer indicator per channel (0=clear, 1=recently jammed)
+- state["prev_channel"]          : int            â€” channel selected in previous step (-1 if start)
+- state["queue_length"]          : int            â€” current packet queue depth (0â€“20)
+- state["energy_used"]           : float          â€” cumulative energy used this episode
+- state["jammer_mode"]           : str            â€” current jammer mode: "random", "sweep", or "reactive"
+- state["step"]                  : int            â€” current step number
+- state["max_steps"]             : int            â€” episode length (500)
+- state["n_channels"]            : int            â€” number of channels (8)
+- state["ep_delivered"]          : int            â€” packets delivered so far this episode
+- state["ep_total_tx"]           : int            â€” total transmission attempts so far
+- state["ep_jammed_tx"]          : int            â€” total jammed transmissions so far
 
 ## Available Feature Variables (in `features` dict passed to compute_reward)
-- features["switched"]               : bool  — agent switched channel this step
-- features["is_jammed"]              : bool  — selected channel was jammed this step
-- features["tx_success"]             : bool  — packet was delivered this step
-- features["avoided_jammed"]         : bool  — selected channel was NOT in jammed set
-- features["queue_pressure"]         : float — queue/capacity ratio (0.0–1.0)
-- features["queue_critical"]         : bool  — queue > 80% capacity
-- features["running_pdr"]            : float — packet delivery ratio so far this episode
-- features["running_jammed_rate"]    : float — jammed TX rate so far this episode
-- features["best_channel"]           : int   — channel with highest recent success rate
-- features["best_channel_success_rate"]: float — success rate of best channel
-- features["current_ch_jammed"]      : bool  — current channel has high jammed_decay
-- features["current_ch_snr"]         : float — SNR of current channel (dB)
-- features["current_ch_success_rate"]: float — rolling success rate of current channel
-- features["on_best_channel"]        : bool  — agent is on the best channel
-- features["switch_penalty_active"]  : bool  — channel switch occurred (same as "switched")
-- features["throughput_so_far"]      : float — delivered packets / steps so far
-- features["pdr_improving"]          : bool  — PDR is higher than previous step
-- features["energy_budget_used"]     : float — average energy per step so far
+- features["switched"]               : bool  â€” agent switched channel this step
+- features["is_jammed"]              : bool  â€” selected channel was jammed this step
+- features["switch_disrupted"]       : bool  - channel switch disrupted the packet this step
+- features["tx_success"]             : bool  â€” packet was delivered this step
+- features["avoided_jammed"]         : bool  â€” selected channel was NOT in jammed set
+- features["queue_pressure"]         : float â€” queue/capacity ratio (0.0â€“1.0)
+- features["queue_critical"]         : bool  â€” queue > 80% capacity
+- features["running_pdr"]            : float â€” packet delivery ratio so far this episode
+- features["running_jammed_rate"]    : float â€” jammed TX rate so far this episode
+- features["best_channel"]           : int   â€” channel with highest recent success rate
+- features["best_channel_success_rate"]: float â€” success rate of best channel
+- features["current_ch_jammed"]      : bool  â€” current channel has high jammed_decay
+- features["current_ch_snr"]         : float â€” SNR of current channel (dB)
+- features["current_ch_success_rate"]: float â€” rolling success rate of current channel
+- features["on_best_channel"]        : bool  â€” agent is on the best channel
+- features["switch_penalty_active"]  : bool  â€” channel switch occurred (same as "switched")
+- features["throughput_so_far"]      : float â€” delivered packets / steps so far
+- features["pdr_improving"]          : bool  â€” PDR is higher than previous step
+- features["energy_budget_used"]     : float â€” average energy per step so far
 
 ## env_reward (sparse base signal)
 - env_reward = +1.0  if packet delivered (not jammed AND SNR OK)
 - env_reward = -1.0  if transmission was jammed
+- env_reward = -0.75 if a channel switch disrupted the packet
 - env_reward = -0.5  if transmission failed due to low SNR (not jammed)
+An additional small base switching overhead may already be subtracted by the environment.
 """
 
         if current_code:
@@ -148,7 +152,7 @@ The agent succeeds when it delivers packets by selecting unjammed channels with 
         else:
             current_section = """
 ## Current Reward Function
-None — this is the initial reward function generation.
+None â€” this is the initial reward function generation.
 """
 
         training_section = f"""
@@ -168,11 +172,11 @@ Based on the training performance above, generate an improved reward function th
 CRITICAL RULES (VIOLATING THESE WILL BREAK TRAINING):
 1. The function MUST be named `compute_reward`
 2. Signature: `def compute_reward(state: dict, features: dict, env_reward: float, done: bool) -> float`
-3. Keep env_reward as the base — it provides the real sparse signal (+1/-1/-0.5)
+3. Keep env_reward as the base â€” it provides the real sparse signal (+1/-1/-0.5)
 4. All shaping reward magnitudes MUST be between 0.001 and 0.1. NEVER use 0.2, 0.5, or 1.0.
 5. Focus on ONE or TWO improvements at a time. Small, incremental changes only.
-6. The total shaped addition per step MUST NOT exceed ±0.15. Shaping GUIDES, not DOMINATES.
-7. Never import external libraries inside compute_reward — only use standard Python and numpy if needed.
+6. The total shaped addition per step MUST NOT exceed Â+/-0.15. Shaping GUIDES, not DOMINATES.
+7. Never import external libraries inside compute_reward â€” only use standard Python and numpy if needed.
 
 MAGNITUDE REFERENCE (follow strictly):
 - Good values: 0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1
@@ -191,7 +195,7 @@ First provide detailed reasoning in multiple paragraphs:
 - What the agent is doing wrong based on the wireless metrics
 - Why the current reward fails to address it
 - What specific change you're making and why
-- Why you chose these specific magnitudes (must be 0.001–0.1 range)
+- Why you chose these specific magnitudes (must be 0.001â€“0.1 range)
 - What behavior improvement you expect
 
 Then provide the code in a ```python code block.
@@ -230,10 +234,10 @@ def compute_reward(state: dict, features: dict, env_reward: float, done: bool) -
             # Validate it has the right function
             if 'def compute_reward' not in code:
                 code = self._get_fallback_reward()
-                reasoning = "LLM output invalid (no compute_reward function found) — using fallback reward"
+                reasoning = "LLM output invalid (no compute_reward function found) â€” using fallback reward"
         else:
             code = self._get_fallback_reward()
-            reasoning = "Could not parse LLM response — using fallback reward"
+            reasoning = "Could not parse LLM response â€” using fallback reward"
 
         return code, reasoning
 
@@ -331,7 +335,7 @@ if __name__ == "__main__":
         print(f"Available models: {models}")
 
         generator = LLMRewardGenerator()
-        test_summary = """## Training Results — Anti-Jamming Channel Selection (Last 10 Episodes)
+        test_summary = """## Training Results â€” Anti-Jamming Channel Selection (Last 10 Episodes)
 - Average PDR: 0.32
 - Average Jammed TX Rate: 0.45
 - Average Switching Rate: 0.08/step
@@ -339,7 +343,7 @@ if __name__ == "__main__":
 
 ### Observed Behaviors
 - Agent is selecting jammed channels frequently
-- Queue is building up — throughput insufficient
+- Queue is building up â€” throughput insufficient
 """
 
         print("\nGenerating test reward function...")
@@ -352,3 +356,5 @@ if __name__ == "__main__":
     else:
         print("ERROR: Ollama is not running!")
         print("Start it with: ollama serve")
+
+
