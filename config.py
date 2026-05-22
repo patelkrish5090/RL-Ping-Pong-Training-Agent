@@ -48,16 +48,23 @@ PPO_CONFIG = {
 # ITERATIVE REFINEMENT
 # =============================================================================
 EPISODES_PER_UPDATE = 20           # Analyze this many recent episodes for LLM
-MAX_ITERATIONS = 20                # Maximum LLM reward-refinement iterations
+MAX_ITERATIONS = 25                # Maximum LLM reward-refinement iterations
 TARGET_PDR = 0.80                  # Stop training when rolling PDR >= this
-TIMESTEPS_PER_ITERATION = 20000   # Training steps between LLM updates
+TIMESTEPS_PER_ITERATION = 50000   # Training steps between LLM updates (50K for stronger convergence)
 
 # =============================================================================
 # LLM CONFIGURATION (Ollama)
 # =============================================================================
+# HOST NOTE:
+#   Local machine : "http://localhost:11434"  OR  "http://127.0.0.1:11434"
+#   Google Colab  : "http://127.0.0.1:11434"  (Ollama binds to 127.0.0.1 inside the VM)
+#                   Make sure Ollama is started inside the Colab cell with:
+#                       !curl -fsSL https://ollama.com/install.sh | sh
+#                       !ollama serve &
+#                       !ollama pull qwen2.5-coder:7b-instruct
 LLM_CONFIG = {
     "model": "qwen2.5-coder:7b-instruct",  # Or "deepseek-coder:6.7b"
-    "host": "http://localhost:11434",
+    "host": "http://127.0.0.1:11434",       # Use 127.0.0.1 for both local and Colab
     "temperature": 0.7,
     "num_ctx": 8192,
 }

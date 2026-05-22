@@ -313,6 +313,7 @@ def train_iterative(
             env,
             verbose=verbose,
             tensorboard_log=_tb_log_dir(),
+            device="cpu",   # MlpPolicy is faster on CPU; avoids spurious GPU warning
             **PPO_CONFIG
         )
 
@@ -393,7 +394,15 @@ def train_iterative(
                 summary = "Error generating summary."
 
             try:
-                new_code, reasoning = llm.generate_reward(summary, current_code)
+                metrics_for_llm = {
+                    "avg_pdr":          analysis.get("avg_pdr", 0.0),
+                    "avg_jammed_rate":  analysis.get("avg_jammed_rate", 0.0),
+                    "avg_switch_rate":  analysis.get("avg_switch_rate", 0.0),
+                    "avg_queue":        analysis.get("avg_queue", 0.0),
+                }
+                new_code, reasoning = llm.generate_reward(
+                    summary, current_code, metrics=metrics_for_llm
+                )
 
                 # Truncate reasoning for display
                 reasoning_display = reasoning[:300] + "..." if len(reasoning) > 300 else reasoning
