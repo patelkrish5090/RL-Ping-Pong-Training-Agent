@@ -189,6 +189,7 @@ class WirelessAntiJammingEnv(gym.Env):
         self._ep_energy = 0.0
         self._ep_queue_sum = 0
         self._ep_arrivals = 0
+        self._last_running_pdr = 0.0   # For pdr_improving feature
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -368,6 +369,7 @@ class WirelessAntiJammingEnv(gym.Env):
         self._ep_energy = 0.0
         self._ep_queue_sum = 0
         self._ep_arrivals = 0
+        self._last_running_pdr = 0.0
 
         obs = self._build_observation()
         info = {"state": self._get_state_dict()}
@@ -467,36 +469,63 @@ class WirelessAntiJammingEnv(gym.Env):
         # Update prev channel
         self._prev_channel = channel
 
-        # 13. Build observation and info
-        obs = self._build_observation()
+        # 13. Build observation and state dict
+        obs   = self._build_observation()
         state = self._get_state_dict()
+
+        # --- Build rich features dict for reward shaping ---
+        running_pdr   = self._ep_delivered / max(self._ep_total_tx, 1)
+        running_jam   = self._ep_jammed_tx  / max(self._ep_total_tx, 1)
+        ch_succ_rates = [self._get_rolling_success(c) for c in range(self.n_channels)]
+        best_ch       = int(np.argmax(ch_succ_rates))
+
+
         features = {
-            "switched": switched,
-            "is_jammed": is_jammed,
-            "snr_ok": snr_ok,
-            "switch_disrupted": switch_disrupted,
-            "tx_success": tx_success,
-            "jammed_channels": jammed_channels,
-            "channel_snr": float(self._channel_snr[channel]),
-            "queue_pressure": float(self._queue_len / self.queue_capacity),
-            "best_channel": int(np.argmax([self._get_rolling_success(c) for c in range(self.n_channels)])),
-            "avoided_jammed": channel not in jammed_channels,
+            # Action-level signals
+            "switched":              switched,
+            "is_jammed":             is_jammed,
+            "snr_ok":                snr_ok,
+            "switch_disrupted":      switch_disrupted,
+            "tx_success":            tx_success,
+            "avoided_jammed":        channel not in jammed_channels,
+
+            # Channel quality signals
+            "current_ch_jammed":     (self._jammed_decay[channel] > 0.4) or is_jammed,
+            "current_ch_snr":        float(self._channel_snr[channel]),
+            "current_ch_success_rate": float(self._get_rolling_success(channel)),
+            "on_best_channel":       (channel == best_ch),
+            "best_channel":          best_ch,
+            "best_channel_success_rate": float(ch_succ_rates[best_ch]),
+
+            # Queue / throughput signals
+            "queue_pressure":        float(self._queue_len / self.queue_capacity),
+            "queue_critical":        (self._queue_len / self.queue_capacity) > 0.80,
+            "throughput_so_far":     float(self._ep_delivered / max(self._step, 1)),
+
+            # Episode-running metrics
+            "running_pdr":           float(running_pdr),
+            "running_jammed_rate":   float(running_jam),
+            "pdr_improving":         float(running_pdr) > float(self._last_running_pdr),
+
+            # Misc
             "switch_penalty_active": switched,
-            "throughput_so_far": self._ep_delivered / max(self._step, 1),
+            "energy_budget_used":    float(self._energy_used / max(self._step, 1)),
+            "jammed_channels":       list(jammed_channels),
         }
+        self._last_running_pdr = running_pdr   # Update for next step
 
         terminated = False
-        truncated = self._step >= self.max_steps
+        truncated  = self._step >= self.max_steps
 
         info = {
-            "state": state,
-            "features": features,
-            "env_reward": env_reward,
+            "state":          state,
+            "features":       features,
+            "env_reward":     env_reward,
             "jammed_channels": jammed_channels,
-            "jammer_mode": getattr(self._jammer, "name", "unknown"),
-            "is_jammed": is_jammed,
+            "jammer_mode":    getattr(self._jammer, "name", "unknown"),
+            "is_jammed":      is_jammed,
             "switch_disrupted": switch_disrupted,
-            "tx_success": tx_success,
+            "tx_success":     tx_success,
         }
         if truncated:
             info["episode_summary"] = self._get_episode_summary()
@@ -506,6 +535,7 @@ class WirelessAntiJammingEnv(gym.Env):
     def get_episode_summary(self) -> Dict:
         """Call at end of episode to get metrics dict."""
         return self._get_episode_summary()
+
 
     def render(self):
         """Simple text render of current state."""

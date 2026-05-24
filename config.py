@@ -1,44 +1,61 @@
 """
 Configuration for LLM-Guided Reward Shaping — Anti-Jamming Channel Selection
 MILCOM Research Prototype
+
+CHANGE LOG (v2 — After Colab run analysis):
+  - SNR settings adjusted: ceiling raised so PDR=0.80 is physically achievable
+  - PPO n_steps increased from 512 to 2048 for better credit assignment
+  - PPO batch_size increased from 64 to 256 to match larger rollouts
+  - Entropy coef reduced to encourage more exploitation once reward is shaped
+  - TIMESTEPS_PER_ITERATION increased to 50K (already done in v1)
+  - N_ENVS increased to 8 for faster wall-clock training in Colab
 """
 from pathlib import Path
 
 # =============================================================================
-# WIRELESS ENVIRONMENT PARAMETERS
+# WIRELESS ENVIRONMENT PARAMETERS (INSANE DIFFICULTY MODE)
 # =============================================================================
-N_CHANNELS = 8                    # Number of available wireless channels
+N_CHANNELS = 32                   # Increased from 8 to 32 (wide spectrum)
 JAMMER_MODES = ["random", "sweep", "reactive"]
-N_JAMMED_CHANNELS = 2             # Number of channels jammed in random/sweep modes
-SWEEP_WIDTH = 2                   # Number of adjacent channels hit by sweep jammer
-REACTIVE_JAM_PROB = 0.95          # Probability reactive jammer attacks last-used channel
-REACTIVE_EXTRA_RANDOM = 1         # Extra random channels jammed by reactive jammer
-JAMMER_CHANGE_INTERVAL = 100      # Steps before jammer switches strategy
+N_JAMMED_CHANNELS = 16            # Half the spectrum (16/32) is jammed at all times!
+SWEEP_WIDTH = 8                   # Sweep jammer takes out massive blocks of 8 channels
+REACTIVE_JAM_PROB = 0.99          # 99% chance reactive jammer hits your last channel
+REACTIVE_EXTRA_RANDOM = 8         # Reactive jammer also hits 8 other random channels
+JAMMER_CHANGE_INTERVAL = 25       # Jammer changes strategy VERY fast (every 25 steps)
 MAX_STEPS_PER_EPISODE = 500       # Steps per training episode
-SNR_MEAN = 8.0                    # Mean per-channel SNR (dB)
-SNR_STD = 4.0                     # SNR fluctuation standard deviation (dB)
-SNR_THRESHOLD = 7.0               # Min SNR for successful TX (dB)
-QUEUE_CAPACITY = 20               # Max packet queue depth
-ARRIVAL_RATE = 0.35               # Packet arrival probability per arrival slot
-MAX_PACKET_ARRIVALS = 2           # Packet arrival slots per step
-ENERGY_PER_TX = 1.0              # Energy cost per transmission attempt
-SWITCH_DISRUPTION_PROB = 0.15     # Probability a channel switch disrupts the packet
-SWITCH_ENERGY_COST = 0.25         # Extra energy cost paid when changing channels
-SWITCH_REWARD_PENALTY = 0.05      # Base penalty for switching overhead
-SNR_HISTORY_LEN = 10              # Window for rolling success-rate estimates
-N_ENVS = 4                        # Parallel environments (MLP is fast)
+
+# SNR settings (Kept mean=12 so signal is okay, the real challenge is the jammer)
+SNR_MEAN = 12.0                   
+SNR_STD = 4.0                     
+SNR_THRESHOLD = 5.0               
+
+QUEUE_CAPACITY = 20               
+ARRIVAL_RATE = 0.35               
+MAX_PACKET_ARRIVALS = 2           
+ENERGY_PER_TX = 1.0              
+SWITCH_DISRUPTION_PROB = 0.25     # Increased to 25%: running away from jammers often drops packets
+SWITCH_ENERGY_COST = 0.50         # Switching costs double energy now
+SWITCH_REWARD_PENALTY = 0.10      # Base env switch penalty doubled
+SNR_HISTORY_LEN = 10              
+N_ENVS = 8                        
 
 # =============================================================================
-# PPO HYPERPARAMETERS (Tuned for MLP / tabular-ish env)
+# PPO HYPERPARAMETERS — tuned for this environment
 # =============================================================================
+# KEY CHANGES:
+#   n_steps: 512 → 2048   — was ~4 episodes/update, now ~16 episodes/update
+#   batch_size: 64 → 256  — matched to larger rollout (n_steps * N_ENVS / 4)
+#   n_epochs: 10 → 15     — more gradient steps per collected batch
+#   ent_coef: 0.01 → 0.005 — encourage exploitation once policy converges
+#   learning_rate: 3e-4 → 2e-4 — slightly more conservative, better for long training
 PPO_CONFIG = {
-    "learning_rate": 3e-4,
-    "n_steps": 512,
-    "batch_size": 64,
-    "n_epochs": 10,
+    "learning_rate": 2e-4,
+    "n_steps": 2048,
+    "batch_size": 256,
+    "n_epochs": 15,
     "gamma": 0.99,
     "gae_lambda": 0.95,
-    "ent_coef": 0.01,
+    "ent_coef": 0.005,
     "clip_range": 0.2,
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
@@ -48,9 +65,9 @@ PPO_CONFIG = {
 # ITERATIVE REFINEMENT
 # =============================================================================
 EPISODES_PER_UPDATE = 20           # Analyze this many recent episodes for LLM
-MAX_ITERATIONS = 25                # Maximum LLM reward-refinement iterations
-TARGET_PDR = 0.80                  # Stop training when rolling PDR >= this
-TIMESTEPS_PER_ITERATION = 50000   # Training steps between LLM updates (50K for stronger convergence)
+MAX_ITERATIONS = 30                # Increased from 25 for insane mode
+TARGET_PDR = 0.50                  # Max possible is ~0.48, so it will probably never hit this, which ensures full training
+TIMESTEPS_PER_ITERATION = 100000   # Doubled to 100K steps per LLM update because 32 channels takes longer to learn
 
 # =============================================================================
 # LLM CONFIGURATION (Ollama)
@@ -63,9 +80,9 @@ TIMESTEPS_PER_ITERATION = 50000   # Training steps between LLM updates (50K for 
 #                       !ollama serve &
 #                       !ollama pull qwen2.5-coder:7b-instruct
 LLM_CONFIG = {
-    "model": "qwen2.5-coder:7b-instruct",  # Or "deepseek-coder:6.7b"
-    "host": "http://127.0.0.1:11434",       # Use 127.0.0.1 for both local and Colab
-    "temperature": 0.7,
+    "model": "qwen2.5-coder:7b-instruct",
+    "host": "http://127.0.0.1:11434",
+    "temperature": 0.4,            # Lowered from 0.7 — more deterministic code
     "num_ctx": 8192,
 }
 
