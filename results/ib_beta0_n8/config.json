@@ -1,0 +1,101 @@
+{
+  "env": {
+    "pole_length": 0.5,
+    "force_magnitude": 10.0,
+    "max_episode_steps": 200
+  },
+  "channel": {
+    "n": 8,
+    "sigma2_channel": 0.0,
+    "sigma2_trainable": 0.0
+  },
+  "network": {
+    "encoder_hidden": [
+      64,
+      64
+    ],
+    "controller_hidden": [
+      64,
+      64
+    ],
+    "recon_head_hidden": [
+      32
+    ]
+  },
+  "training": {
+    "n_episodes": 30,
+    "batch_size": 64,
+    "lr": 0.001,
+    "gamma": 0.99,
+    "eps_start": 1.0,
+    "eps_end": 0.01,
+    "eps_decay": 0.995,
+    "replay_buffer_size": 10000,
+    "min_replay_size": 1000,
+    "target_update_freq": 10
+  },
+  "ib": {
+    "beta": 0.0,
+    "use_ib": true
+  },
+  "variant_a": {
+    "enabled": false,
+    "lambda_llm": 0.0,
+    "llm_query_interval": 999999,
+    "plateau_threshold": 10.0,
+    "plateau_window": 20,
+    "llm_model": "qwen3-coder:latest",
+    "ollama_url": "http://localhost:11434",
+    "api_timeout": 30,
+    "fallback_weights_low_noise": [
+      0.15,
+      0.2,
+      0.35,
+      0.3
+    ],
+    "fallback_weights_high_noise": [
+      0.08,
+      0.2,
+      0.42,
+      0.3
+    ],
+    "noise_threshold": 0.5
+  },
+  "eval": {
+    "pole_lengths": [
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      1.0,
+      1.1,
+      1.2,
+      1.3,
+      1.4,
+      1.5,
+      1.6
+    ],
+    "force_magnitudes": [
+      2,
+      5,
+      8,
+      10,
+      12,
+      15,
+      18,
+      20,
+      25,
+      30,
+      35,
+      40
+    ],
+    "n_eval_episodes": 100
+  },
+  "seed": 42,
+  "experiment_name": "ib_beta0_n8",
+  "results_dir": "results"
+}
