@@ -225,7 +225,7 @@ class LLMAdvisor:
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
             "options": {
-                "num_predict": 256,
+                "num_predict": 2048,   # High limit because DeepSeek-R1 outputs long <think> blocks
                 "temperature": 0.2,    # Low temperature for deterministic JSON output
             },
         }
@@ -247,6 +247,11 @@ class LLMAdvisor:
         """
         try:
             cleaned = text.strip()
+            
+            # Strip DeepSeek <think>...</think> reasoning blocks
+            if "</think>" in cleaned:
+                cleaned = cleaned.split("</think>")[-1].strip()
+
             # Strip markdown code fences if present
             if cleaned.startswith("```"):
                 lines = cleaned.split("\n")
