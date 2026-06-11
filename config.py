@@ -76,7 +76,7 @@ class VariantAConfig:
     # Ollama LLM settings
     llm_model: str = "deepseek-r1:32b"
     ollama_url: str = "http://localhost:11434"   # Override via CLI --ollama-url
-    api_timeout: int = 30                        # Seconds; Qwen3 local inference is slower
+    api_timeout: int = 120                       # Seconds; DeepSeek-R1 32b reasoning takes time
     # Physics-based fallback weights: [x_cart, x_dot, theta, theta_dot]
     fallback_weights_low_noise: List[float] = field(
         default_factory=lambda: [0.15, 0.20, 0.35, 0.30]
