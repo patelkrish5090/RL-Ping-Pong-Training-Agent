@@ -273,7 +273,6 @@ def main() -> None:
     # --- Plots only mode ---
     if args.plots_only:
         print("[run] Plots-only mode.")
-        from plot_results import plot_training_curves, plot_heatmap, plot_llm_weights
         results_dir = "results"
         plots_dir   = os.path.join(results_dir, "plots")
         os.makedirs(plots_dir, exist_ok=True)
