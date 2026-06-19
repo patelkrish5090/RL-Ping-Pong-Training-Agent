@@ -26,8 +26,12 @@ from __future__ import annotations
 import sys
 # PyTorch 2.x dynamo compatibility patch for certain Python builds
 if not hasattr(sys, "get_int_max_str_digits"):
-    sys.get_int_max_str_digits = lambda: 4300
-    sys.set_int_max_str_digits = lambda x: None
+    def get_int_max_str_digits() -> int:
+        return 4300
+    def set_int_max_str_digits(maxdigits: int) -> None:
+        pass
+    sys.get_int_max_str_digits = get_int_max_str_digits
+    sys.set_int_max_str_digits = set_int_max_str_digits
 import argparse
 import copy
 import json
