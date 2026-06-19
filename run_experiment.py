@@ -23,6 +23,11 @@ Usage examples:
 """
 from __future__ import annotations
 
+import sys
+# PyTorch 2.x dynamo compatibility patch for certain Python builds
+if not hasattr(sys, "get_int_max_str_digits"):
+    sys.get_int_max_str_digits = lambda: 4300
+    sys.set_int_max_str_digits = lambda x: None
 import argparse
 import copy
 import json
