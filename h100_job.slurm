@@ -68,8 +68,8 @@ OLLAMA_PID=$!
 echo "Waiting for Ollama server to initialize (15s)..."
 sleep 15
 
-echo "Pulling deepseek-r1:32b model (will be fast if already cached)..."
-${APPTAINER_RUN} ollama pull deepseek-r1:32b
+echo "Pulling deepseek-r1:8b model (will be fast if already cached)..."
+${APPTAINER_RUN} ollama pull deepseek-r1:8b
 
 echo "=========================================================="
 echo "Running Experiments"

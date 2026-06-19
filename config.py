@@ -74,7 +74,7 @@ class VariantAConfig:
     plateau_threshold: float = 10.0     # Reward drop (vs. prior query avg) to trigger early query
     plateau_window: int = 20            # Window size for moving-average plateau detection
     # Ollama LLM settings
-    llm_model: str = "deepseek-r1:32b"
+    llm_model: str = "deepseek-r1:8b"
     ollama_url: str = "http://localhost:11434"   # Override via CLI --ollama-url
     api_timeout: int = 120                       # Seconds; DeepSeek-R1 32b reasoning takes time
     # Physics-based fallback weights: [x_cart, x_dot, theta, theta_dot]
