@@ -252,19 +252,19 @@ class LLMAdvisor:
             if "</think>" in cleaned:
                 cleaned = cleaned.split("</think>")[-1].strip()
 
-            # Strip markdown code fences if present
-            if cleaned.startswith("```"):
-                lines = cleaned.split("\n")
-                # Drop first and last lines (``` or ```json)
-                cleaned = "\n".join(lines[1:-1]) if len(lines) > 2 else cleaned
-            cleaned = cleaned.strip("`").strip()
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:].strip()
+            # Bulletproof extraction: find the first { and last }
+            start_idx = cleaned.find("{")
+            end_idx = cleaned.rfind("}")
+            
+            if start_idx != -1 and end_idx != -1:
+                cleaned = cleaned[start_idx:end_idx+1]
+            else:
+                raise ValueError("No JSON object found in response")
 
             data = json.loads(cleaned)
             weights = np.array(data["weights"], dtype=np.float32)
             assert len(weights) == 4, f"Expected 4 weights, got {len(weights)}"
-            assert all(0.0 < float(w) <= 1.0 for w in weights), "Weights out of (0,1] range"
+            assert all(0.0 <= float(w) <= 1.0 for w in weights), "Weights out of [0,1] range"
 
             # Clamp and normalize
             weights = np.clip(weights, 0.05, 0.60)
