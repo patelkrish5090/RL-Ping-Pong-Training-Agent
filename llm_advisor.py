@@ -159,31 +159,38 @@ class LLMAdvisor:
         weights = None
         raw_response = ""
 
-        try:
-            raw_response = self._call_ollama(prompt)
-            weights = self._parse_response(raw_response)
-            if weights is None:
-                source = "fallback_parse_error"
-        except requests.exceptions.Timeout:
-            source = "fallback_timeout"
-            print(f"[LLMAdvisor] Ep {episode}: Ollama request timed out — using fallback weights.")
-        except requests.exceptions.ConnectionError:
-            source = "fallback_connection_error"
-            print(f"[LLMAdvisor] Ep {episode}: Cannot reach Ollama server ({self._vcfg.ollama_url}) — using fallback weights.")
-        except Exception as exc:
-            source = f"fallback_error:{type(exc).__name__}"
-            print(f"[LLMAdvisor] Ep {episode}: Unexpected error ({exc}) — using fallback weights.")
+        for attempt in range(3):
+            try:
+                raw_response = self._call_ollama(prompt)
+                weights = self._parse_response(raw_response)
+                if weights is not None:
+                    break
+                else:
+                    source = "fallback_parse_error"
+                    print(f"[LLMAdvisor] Ep {episode}: Empty or invalid JSON. Retrying (attempt {attempt+1}/3)...")
+            except requests.exceptions.Timeout:
+                source = "fallback_timeout"
+                print(f"[LLMAdvisor] Ep {episode}: Ollama request timed out — using fallback weights.")
+                break
+            except requests.exceptions.ConnectionError:
+                source = "fallback_connection_error"
+                print(f"[LLMAdvisor] Ep {episode}: Cannot reach Ollama server ({self._vcfg.ollama_url}) — using fallback weights.")
+                break
+            except Exception as exc:
+                source = f"fallback_error:{type(exc).__name__}"
+                print(f"[LLMAdvisor] Ep {episode}: Unexpected error ({exc}) — using fallback weights.")
+                break
 
         if weights is None:
             weights = self._fallback_weights()
         else:
             # Try to extract reasoning from successful parse
             try:
-                text = raw_response.strip().strip("`").strip()
-                if text.startswith("json"):
-                    text = text[4:]
-                data = json.loads(text)
-                reasoning = str(data.get("reasoning", ""))[:200]
+                start_idx = raw_response.find("{")
+                end_idx = raw_response.rfind("}")
+                if start_idx != -1 and end_idx != -1:
+                    data = json.loads(raw_response[start_idx:end_idx+1])
+                    reasoning = str(data.get("reasoning", ""))[:200]
             except Exception:
                 pass
 
