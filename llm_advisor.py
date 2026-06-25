@@ -56,8 +56,11 @@ Weights must sum to 1.0 and be between 0.05 and 0.60.
 Physics reasoning: Under tight bandwidth (small n) and high noise (large σ²),
 the encoder must prioritize features that most directly determine episode termination.
 
-Respond ONLY with valid JSON, no explanation, no markdown:
-{{"weights": [w0, w1, w2, w3], "reasoning": "one sentence max"}}"""
+Please provide your final answer as a JSON object with exactly this format:
+{
+  "weights": [0.1, 0.2, 0.4, 0.3],
+  "reasoning": "your reasoning here"
+}"""
 
 
 # ---------------------------------------------------------------------------
