@@ -126,10 +126,15 @@ def train(config: ExperimentConfig, ollama_url: Optional[str] = None) -> Dict:
             obs = next_obs
             ep_reward += float(reward)
 
+            # --- Training update (1 gradient step per environment step) ---
+            step_losses = agent.update()
+            if step_losses is not None:
+                losses = step_losses
+
         episode_rewards.append(ep_reward)
 
-        # --- Training update (if replay buffer has enough samples) ---
-        losses = agent.update()
+        # --- Decay Epsilon (once per episode) ---
+        agent.epsilon = max(config.training.eps_end, agent.epsilon * config.training.eps_decay)
 
         # --- Target network update ---
         if (episode + 1) % config.training.target_update_freq == 0:

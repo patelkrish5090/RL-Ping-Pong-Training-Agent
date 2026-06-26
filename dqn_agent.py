@@ -280,9 +280,8 @@ class DQNAgent:
         )
         self.optimizer.step()
 
-        # Decay epsilon
-        self.epsilon = max(self.tcfg.eps_end, self.epsilon * self.tcfg.eps_decay)
-
+        # (Epsilon decay is now handled manually per-episode in train.py)
+        
         return {
             "loss_dqn":   loss_dqn.item(),
             "loss_ib":    loss_ib.item(),

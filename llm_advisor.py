@@ -57,10 +57,10 @@ Physics reasoning: Under tight bandwidth (small n) and high noise (large σ²),
 the encoder must prioritize features that most directly determine episode termination.
 
 Please provide your final answer as a JSON object with exactly this format:
-{
+{{
   "weights": [0.1, 0.2, 0.4, 0.3],
   "reasoning": "your reasoning here"
-}"""
+}}"""
 
 
 # ---------------------------------------------------------------------------
