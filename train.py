@@ -117,6 +117,7 @@ def train(config: ExperimentConfig, ollama_url: Optional[str] = None) -> Dict:
         obs, _ = env.reset()
         ep_reward = 0.0
         done = False
+        losses = None
 
         while not done:
             action = agent.select_action(obs)
